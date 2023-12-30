@@ -6,12 +6,14 @@ import java.awt.event.*;
 import java.util.*;
 import java.sql.*;
 import javax.swing.*;
+import javax.swing.event.ChangeListener;
+import javax.swing.event.ChangeEvent;
 
 public class BookFrame {
 
     Connection con;
     PreparedStatement ps;
-    JFrame frame = new JFrame("Book Record Management");
+    JFrame frame = new JFrame("Library Management");
     JTabbedPane tabbedPane = new JTabbedPane();
     JPanel insertPanel, viewPanel;
     JLabel l1, l2, l3, l4, l5;
@@ -31,7 +33,7 @@ public class BookFrame {
             con = DriverManager.getConnection("jdbc:mysql://localhost:3306/demo", "root", "");
             System.out.println("Connected to MySQL");
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            System.out.println("connection error:" + e.getMessage());
         }
     }
 
@@ -61,6 +63,7 @@ public class BookFrame {
         t4.setBounds(200, 250, 100, 30);
         t5.setBounds(200, 300, 100, 30);
         saveButton.setBounds(100, 350, 100, 30);
+
         saveButton.addActionListener(new InsertBookRecord());
 
         insertPanel = new JPanel();
@@ -77,28 +80,60 @@ public class BookFrame {
         insertPanel.add(t5);
         insertPanel.add(saveButton);
 
-        ArrayList<Book> booklist = fetchBookRecords();
-        setDataOnTable(booklist);
-        updateButton = new JButton("Update");
-        deleteButton = new JButton("Delete");
+        class deleteBookRecord implements ActionListener {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                int rowNo = table.getSelectedRow();
+                if (rowNo != -1) {
+                    int id = (int) table.getValueAt(rowNo, 0);
+                    String q = "DELETE FROM book WHERE bookid=?";
+                    try {
+                        ps = con.prepareStatement(q);
+                        ps.setInt(1, id);
+                        ps.execute();
+                        System.out.println("Record deleted");
+                    } catch (SQLException e2) {
+                        System.out.println("delete exception:" + e2.getMessage());
+                    } finally {
+
+                        ArrayList<Book> bookList = fetchBookRecords();
+                        updateTable(bookList);
+                    }
+                }
+            }
+        }
+
+        ArrayList<Book> bookList = fetchBookRecords();
+        setDataOnTable(bookList);
+
+        updateButton = new JButton("Update Book");
+        updateButton.addActionListener(new UpdateBookRecord());
+        deleteButton = new JButton("Delete Book");
+        deleteButton.addActionListener(new deleteBookRecord());
+
         updateButton.setBounds(100, 350, 100, 30);
         deleteButton.setBounds(250, 350, 100, 30);
+
         viewPanel = new JPanel();
-        viewPanel.setLayout(null);
+
         viewPanel.add(updateButton);
         viewPanel.add(deleteButton);
+
         scrollPane = new JScrollPane(table);
         scrollPane.setBounds(100, 100, 300, 200);
         viewPanel.add(scrollPane);
 
         tabbedPane.add(insertPanel);
+        tabbedPane.add(viewPanel);
+        tabbedPane.addChangeListener(new TabChangeHandler());
+
         frame.add(tabbedPane);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(500, 500);
         frame.setVisible(true);
     }
 
-    void setDataOnTable(ArrayList<Book> bookList) {
+    void updateTable(ArrayList<Book> bookList) {
         Object[][] obj = new Object[bookList.size()][5];
 
         for (int i = 0; i < bookList.size(); i++) {
@@ -109,9 +144,48 @@ public class BookFrame {
             obj[i][4] = bookList.get(i).getPublisher();
         }
 
-        table = new JTable();
-        tm = new DefaultTableModel(obj, colNames);
+        tm.setRowCount(bookList.size());
+        tm.setColumnIdentifiers(colNames);
+
+        for (int i = 0; i < bookList.size(); i++) {
+            tm.setValueAt(obj[i][0], i, 0);
+            tm.setValueAt(obj[i][1], i, 1);
+            tm.setValueAt(obj[i][2], i, 2);
+            tm.setValueAt(obj[i][3], i, 3);
+            tm.setValueAt(obj[i][4], i, 4);
+
+        }
+
         table.setModel(tm);
+    }
+
+    void setDataOnTable(ArrayList<Book> bookList) {
+
+        Object[][] obj = new Object[bookList.size()][5];
+
+        for (int i = 0; i < bookList.size(); i++) {
+            obj[i][0] = bookList.get(i).getBookId();
+            obj[i][1] = bookList.get(i).getTitle();
+            obj[i][2] = bookList.get(i).getPrice();
+            obj[i][3] = bookList.get(i).getAuthor();
+            obj[i][4] = bookList.get(i).getPublisher();
+        }
+        table = new JTable();
+        tm = new DefaultTableModel();
+        tm.setRowCount(bookList.size());
+        tm.setColumnIdentifiers(colNames);
+
+        for (int i = 0; i < bookList.size(); i++) {
+            tm.setValueAt(obj[i][0], i, 0);
+            tm.setValueAt(obj[i][1], i, 1);
+            tm.setValueAt(obj[i][2], i, 2);
+            tm.setValueAt(obj[i][3], i, 3);
+            tm.setValueAt(obj[i][4], i, 4);
+
+        }
+
+        table.setModel(tm);
+
     }
 
     ArrayList<Book> fetchBookRecords() {
@@ -131,7 +205,7 @@ public class BookFrame {
                 booklist.add(b1);
             }
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            System.out.println("fetch exception" + e.getMessage());
         }
         return booklist;
     }
@@ -139,7 +213,7 @@ public class BookFrame {
     class InsertBookRecord implements ActionListener {
         public void actionPerformed(ActionEvent e) {
             Book b1 = readFromData();
-            String q = "insert into book values(?,?,?,?,?)";
+            String q = "insert into book(bookid,title,price,author,publisher) values(?,?,?,?,?)";
             try {
                 ps = con.prepareStatement(q);
                 ps.setInt(1, b1.getBookId());
@@ -147,10 +221,16 @@ public class BookFrame {
                 ps.setDouble(3, b1.getPrice());
                 ps.setString(4, b1.getAuthor());
                 ps.setString(5, b1.getPublisher());
-                ps.executeUpdate();
+                ps.execute();
                 System.out.println("Record inserted");
+                t1.setText("");
+                t2.setText("");
+                t3.setText("");
+                t4.setText("");
+                t5.setText("");
+
             } catch (SQLException e1) {
-                System.out.println(e1.getMessage());
+                System.out.println("insert exception:" + e1.getMessage());
             }
         }
 
@@ -163,5 +243,80 @@ public class BookFrame {
             b1.setPublisher(t5.getText());
             return b1;
         }
+
+    }
+
+    class TabChangeHandler implements ChangeListener {
+        public void stateChanged(ChangeEvent e) {
+            int index = tabbedPane.getSelectedIndex();
+            if (index == 1) {
+                ArrayList<Book> booklist = fetchBookRecords();
+                updateTable(booklist);
+            }
+            if (index == 0) {
+                System.out.println("Insert tab selected");
+            }
+        } // Assuming ps is declared somewhere in your class
+
+    }
+
+    class UpdateBookRecord implements ActionListener {
+        public void actionPerformed(ActionEvent e) {
+            ArrayList<Book> updatedBookList = readTableData();
+            String q = "update book set title=?, price=?, author=?, publisher=? where bookid=?";
+
+            try {
+                ps = con.prepareStatement(q);
+                for (Book b1 : updatedBookList) {
+                    ps.setString(1, b1.getTitle());
+                    ps.setDouble(2, b1.getPrice());
+                    ps.setString(3, b1.getAuthor());
+                    ps.setString(4, b1.getPublisher());
+                    ps.setInt(5, b1.getBookId());
+                    ps.executeUpdate();
+                }
+                System.out.println("Record updated");
+            } catch (SQLException e1) {
+                System.out.println("update exception:" + e1.getMessage());
+            }
+        }
+
+        ArrayList<Book> readTableData() {
+            ArrayList<Book> updatedbookList = new ArrayList<Book>();
+            for (int i = 0; i < tm.getRowCount(); i++) {
+                Book b1 = new Book();
+                b1.setBookId((int) tm.getValueAt(i, 0));
+                b1.setTitle((String) tm.getValueAt(i, 1));
+                b1.setPrice((double) tm.getValueAt(i, 2));
+                b1.setAuthor((String) tm.getValueAt(i, 3));
+                b1.setPublisher((String) tm.getValueAt(i, 4));
+                updatedbookList.add(b1);
+            }
+            return updatedbookList;
+        }
+
+        // class deleteBookRecord implements ActionListener {
+        // public void actionPerformed(ActionEvent e) {
+
+        // int rowNo = table.getSelectedRow();
+        // if (rowNo != -1) {
+        // int id = (int) table.getValueAt(rowNo, 0);
+        // String q = "DELETE FROM book WHERE bookid=?";
+        // try {
+        // ps = con.prepareStatement(q);
+        // ps.setInt(1, id);
+        // ps.execute();
+        // System.out.println("Record deleted");
+        // } catch (SQLException e2) {
+        // System.out.println("delete exception:" + e2.getMessage());
+        // } finally {
+
+        // ArrayList<Book> bookList = fetchBookRecords();
+        // updateTable(bookList);
+        // }
+        // }
+        // }
+        // }
+
     }
 }

@@ -8,8 +8,6 @@ public class Book {
     private String author;
     private String publisher;
 
-    // Constructors, getters, and setters
-
     public int getBookId() {
         return bookId;
     }
